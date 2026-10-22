@@ -343,6 +343,31 @@ export class EnergyStore {
       updatedAt: newUser.createdAt,
     };
 
+    // Synchronize operator profile with Supabase Cloud
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .insert({
+            email: newUser.email,
+            full_name: newUser.fullName,
+            node_id: newUser.nodeId,
+            role: 'operator',
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.warn('[SUPABASE] Profile sync note:', error.message);
+        } else if (data) {
+          newUser.id = data.id;
+          inMemoryData.profile.id = data.id;
+        }
+      } catch (e) {
+        console.warn('[SUPABASE] Profile sync exception:', e);
+      }
+    }
+
     return newUser;
   }
 
@@ -369,6 +394,17 @@ export class EnergyStore {
     };
 
     return { valid: true, user };
+  }
+
+  // SUPABASE HELPER
+  static async getSupabaseHouseholdId(): Promise<string | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+    try {
+      const { data } = await supabase.from('households').select('id').limit(1).maybeSingle();
+      return data?.id || null;
+    } catch {
+      return null;
+    }
   }
 
   // PROFILE
@@ -424,51 +460,65 @@ export class EnergyStore {
 
   static async updateHousehold(updates: Partial<Household>): Promise<Household> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('households')
-        .update({
-          residence_name: updates.residenceName,
-          residents_count: updates.residentsCount,
-          city: updates.city,
-          state: updates.state,
-          housing_type: updates.housingType,
-          sanctioned_load_kw: updates.sanctionedLoadKw,
-          phase_type: updates.phaseType,
-          discom_name: updates.discomName,
-          discom_code: updates.discomCode,
-          tariff_structure: updates.tariffStructure,
-          base_tariff_inr: updates.baseTariffInr,
-          monthly_budget_inr: updates.monthlyBudgetInr,
-          telemetry_source: updates.telemetrySource,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', updates.id || inMemoryData.household.id)
-        .select()
-        .single();
+      let targetId = updates.id;
+      if (!targetId || targetId.startsWith('demo-')) {
+        targetId = (await this.getSupabaseHouseholdId()) || undefined;
+      }
 
-      if (!error && data) {
-        return {
-          id: data.id,
-          profileId: data.profile_id,
-          residenceName: data.residence_name,
-          residentsCount: data.residents_count,
-          city: data.city,
-          state: data.state,
-          housingType: data.housing_type,
-          sanctionedLoadKw: Number(data.sanctioned_load_kw),
-          phaseType: data.phase_type,
-          discomName: data.discom_name,
-          discomCode: data.discom_code,
-          tariffStructure: data.tariff_structure,
-          baseTariffInr: Number(data.base_tariff_inr),
-          monthlyBudgetInr: Number(data.monthly_budget_inr),
-          telemetrySource: data.telemetry_source,
-          hardwareBridgeConnected: data.hardware_bridge_connected,
-          hardwareNodeId: data.hardware_node_id,
-          isActive: data.is_active,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-        };
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.residenceName !== undefined) updatePayload.residence_name = updates.residenceName;
+      if (updates.residentsCount !== undefined) updatePayload.residents_count = updates.residentsCount;
+      if (updates.city !== undefined) updatePayload.city = updates.city;
+      if (updates.state !== undefined) updatePayload.state = updates.state;
+      if (updates.housingType !== undefined) updatePayload.housing_type = updates.housingType;
+      if (updates.sanctionedLoadKw !== undefined) updatePayload.sanctioned_load_kw = updates.sanctionedLoadKw;
+      if (updates.phaseType !== undefined) updatePayload.phase_type = updates.phaseType;
+      if (updates.discomName !== undefined) updatePayload.discom_name = updates.discomName;
+      if (updates.discomCode !== undefined) updatePayload.discom_code = updates.discomCode;
+      if (updates.tariffStructure !== undefined) updatePayload.tariff_structure = updates.tariffStructure;
+      if (updates.baseTariffInr !== undefined) updatePayload.base_tariff_inr = updates.baseTariffInr;
+      if (updates.monthlyBudgetInr !== undefined) updatePayload.monthly_budget_inr = updates.monthlyBudgetInr;
+      if (updates.telemetrySource !== undefined) updatePayload.telemetry_source = updates.telemetrySource;
+      if (updates.hardwareBridgeConnected !== undefined) updatePayload.hardware_bridge_connected = updates.hardwareBridgeConnected;
+      if (updates.hardwareNodeId !== undefined) updatePayload.hardware_node_id = updates.hardwareNodeId;
+
+      if (targetId) {
+        const { data, error } = await supabase
+          .from('households')
+          .update(updatePayload)
+          .eq('id', targetId)
+          .select()
+          .single();
+
+        if (!error && data) {
+          inMemoryData.household = {
+            id: data.id,
+            profileId: data.profile_id,
+            residenceName: data.residence_name,
+            residentsCount: data.residents_count,
+            city: data.city,
+            state: data.state,
+            housingType: data.housing_type,
+            sanctionedLoadKw: Number(data.sanctioned_load_kw),
+            phaseType: data.phase_type,
+            discomName: data.discom_name,
+            discomCode: data.discom_code,
+            tariffStructure: data.tariff_structure,
+            baseTariffInr: Number(data.base_tariff_inr),
+            monthlyBudgetInr: Number(data.monthly_budget_inr),
+            telemetrySource: data.telemetry_source,
+            hardwareBridgeConnected: data.hardware_bridge_connected,
+            hardwareNodeId: data.hardware_node_id,
+            isActive: data.is_active,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          };
+          return inMemoryData.household;
+        } else if (error) {
+          console.warn('[SUPABASE] updateHousehold error:', error);
+        }
       }
     }
 
@@ -509,38 +559,49 @@ export class EnergyStore {
     const dailyKwh = Number(((appliance.count * appliance.wattage * appliance.hoursPerDay) / 1000).toFixed(3));
     
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('appliances')
-        .insert({
-          household_id: appliance.householdId || inMemoryData.household.id,
-          name: appliance.name,
-          category: appliance.category || 'general',
-          count: appliance.count,
-          wattage: appliance.wattage,
-          hours_per_day: appliance.hoursPerDay,
-          icon: appliance.icon || '⚡',
-          status: appliance.status || 'normal',
-          is_custom: appliance.isCustom ?? true,
-        })
-        .select()
-        .single();
+      let hId: string | null = appliance.householdId || null;
+      if (!hId || hId.startsWith('demo-')) {
+        hId = await this.getSupabaseHouseholdId();
+      }
 
-      if (!error && data) {
-        return {
-          id: data.id,
-          householdId: data.household_id,
-          name: data.name,
-          category: data.category,
-          count: data.count,
-          wattage: data.wattage,
-          hoursPerDay: Number(data.hours_per_day),
-          dailyKwh: Number(data.daily_kwh),
-          icon: data.icon,
-          status: data.status,
-          isCustom: data.is_custom,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-        };
+      if (hId) {
+        const { data, error } = await supabase
+          .from('appliances')
+          .insert({
+            household_id: hId,
+            name: appliance.name,
+            category: appliance.category || 'general',
+            count: appliance.count,
+            wattage: appliance.wattage,
+            hours_per_day: appliance.hoursPerDay,
+            icon: appliance.icon || '⚡',
+            status: appliance.status || 'normal',
+            is_custom: appliance.isCustom ?? true,
+          })
+          .select()
+          .single();
+
+        if (!error && data) {
+          const created: Appliance = {
+            id: data.id,
+            householdId: data.household_id,
+            name: data.name,
+            category: data.category,
+            count: data.count,
+            wattage: data.wattage,
+            hoursPerDay: Number(data.hours_per_day),
+            dailyKwh: Number(data.daily_kwh),
+            icon: data.icon,
+            status: data.status,
+            isCustom: data.is_custom,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          };
+          inMemoryData.appliances.push(created);
+          return created;
+        } else if (error) {
+          console.warn('[SUPABASE] addAppliance error:', error);
+        }
       }
     }
 
@@ -553,6 +614,64 @@ export class EnergyStore {
     };
     inMemoryData.appliances.push(created);
     return created;
+  }
+
+  static async syncAppliances(householdId: string, appliances: Array<Omit<Appliance, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Appliance[]> {
+    if (isSupabaseConfigured && supabase) {
+      let targetHId = householdId;
+      if (!targetHId || targetHId.startsWith('demo-')) {
+        targetHId = (await this.getSupabaseHouseholdId()) || targetHId;
+      }
+
+      if (targetHId && appliances.length > 0) {
+        // Clear old appliances for this household and batch insert new list
+        await supabase.from('appliances').delete().eq('household_id', targetHId);
+
+        const rows = appliances.map((app) => ({
+          household_id: targetHId,
+          name: app.name,
+          category: app.category || 'general',
+          count: app.count,
+          wattage: app.wattage,
+          hours_per_day: app.hoursPerDay,
+          icon: app.icon || '⚡',
+          status: app.status || 'normal',
+          is_custom: Boolean(app.isCustom),
+        }));
+
+        const { data, error } = await supabase.from('appliances').insert(rows).select();
+        if (!error && data) {
+          const synced = data.map((d) => ({
+            id: d.id,
+            householdId: d.household_id,
+            name: d.name,
+            category: d.category,
+            count: d.count,
+            wattage: d.wattage,
+            hoursPerDay: Number(d.hours_per_day),
+            dailyKwh: Number(d.daily_kwh),
+            icon: d.icon,
+            status: d.status,
+            isCustom: d.is_custom,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          }));
+          inMemoryData.appliances = synced;
+          return synced;
+        } else if (error) {
+          console.warn('[SUPABASE] syncAppliances error:', error);
+        }
+      }
+    }
+
+    inMemoryData.appliances = appliances.map((a, idx) => ({
+      ...a,
+      id: `app-${idx + 1}-${Date.now()}`,
+      dailyKwh: Number(((a.count * a.wattage * a.hoursPerDay) / 1000).toFixed(3)),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    return inMemoryData.appliances;
   }
 
   static async deleteAppliance(id: string): Promise<boolean> {

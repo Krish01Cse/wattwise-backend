@@ -70,24 +70,23 @@ export class HouseholdController {
         telemetrySource: telemetrySource || 'dataset_historical',
       });
 
-      // If appliances array was passed during wizard completion
+      // If appliances array was passed during wizard completion, sync with Supabase
       if (Array.isArray(appliances) && appliances.length > 0) {
-        for (const app of appliances) {
-          if (app.name && app.wattage) {
-            await EnergyStore.addAppliance({
-              householdId: household.id,
-              name: app.name,
-              category: app.category || 'general',
-              count: Number(app.count) || 1,
-              wattage: Number(app.wattage) || 100,
-              hoursPerDay: Number(app.hoursPerDay) || 4,
-              dailyKwh: Number(app.dailyKwh) || 0.4,
-              icon: app.icon || '⚡',
-              status: app.status || 'normal',
-              isCustom: Boolean(app.isCustom),
-            });
-          }
-        }
+        await EnergyStore.syncAppliances(
+          household.id,
+          appliances.map((app) => ({
+            householdId: household.id,
+            name: app.name,
+            category: app.category || 'general',
+            count: Number(app.count) || 1,
+            wattage: Number(app.wattage) || 100,
+            hoursPerDay: Number(app.hoursPerDay) || 4,
+            dailyKwh: Number(app.dailyKwh) || 0.4,
+            icon: app.icon || '⚡',
+            status: app.status || 'normal',
+            isCustom: Boolean(app.isCustom),
+          }))
+        );
       }
 
       return res.status(200).json({
