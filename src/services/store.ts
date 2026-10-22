@@ -8,11 +8,23 @@ import {
   TelemetryOverview,
   SimulatorConfig,
   TrainedModel,
-  EpochLog
+  EpochLog,
+  RegisteredUser
 } from '../types/index.js';
 
 // In-Memory Seed Storage (Matches Bandra Residence in frontend)
 const inMemoryData = {
+  users: [
+    {
+      id: 'demo-profile-001',
+      email: 'aditya.k@wattwise.internal',
+      password: 'Passcode@2026',
+      fullName: 'Aditya K.',
+      nodeId: 'NODE-4092-BNDR',
+      createdAt: new Date().toISOString(),
+    },
+  ] as RegisteredUser[],
+
   profile: {
     id: 'demo-profile-001',
     email: 'aditya.k@wattwise.internal',
@@ -297,6 +309,68 @@ const inMemoryData = {
 };
 
 export class EnergyStore {
+  // USER REGISTRY & AUTHENTICATION
+  static async findUserByEmail(email: string): Promise<RegisteredUser | null> {
+    const normalized = email.trim().toLowerCase();
+    const user = inMemoryData.users.find((u) => u.email.toLowerCase() === normalized);
+    return user || null;
+  }
+
+  static async registerUser(payload: { email: string; password: string; fullName?: string }): Promise<RegisteredUser> {
+    const normalized = payload.email.trim().toLowerCase();
+    const existing = await this.findUserByEmail(normalized);
+    if (existing) {
+      throw new Error(`Operator node already registered for email: ${payload.email}`);
+    }
+
+    const newUser: RegisteredUser = {
+      id: `usr-${Date.now()}`,
+      email: normalized,
+      password: payload.password,
+      fullName: payload.fullName || 'Operator',
+      nodeId: `NODE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    inMemoryData.users.push(newUser);
+    inMemoryData.profile = {
+      id: newUser.id,
+      email: newUser.email,
+      fullName: newUser.fullName,
+      nodeId: newUser.nodeId,
+      role: 'operator',
+      createdAt: newUser.createdAt,
+      updatedAt: newUser.createdAt,
+    };
+
+    return newUser;
+  }
+
+  static async validateUserCredentials(email: string, password: string): Promise<{ valid: boolean; user?: RegisteredUser; reason?: string }> {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.findUserByEmail(normalized);
+    if (!user) {
+      return { valid: false, reason: `Account not found. No operator node is registered for ${email}. Please sign up first.` };
+    }
+
+    if (user.password !== password) {
+      return { valid: false, reason: 'Invalid credentials. Password cipher does not match the registered operator key.' };
+    }
+
+    // Update active profile to the logged-in user
+    inMemoryData.profile = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      nodeId: user.nodeId,
+      role: 'operator',
+      createdAt: user.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    return { valid: true, user };
+  }
+
   // PROFILE
   static async getProfile(): Promise<Profile> {
     if (isSupabaseConfigured && supabase) {

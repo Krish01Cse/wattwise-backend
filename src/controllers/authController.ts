@@ -24,7 +24,7 @@ export class AuthController {
         if (error) {
           return res.status(401).json({
             status: 'error',
-            message: error.message,
+            message: error.message || 'Invalid credentials or account not registered in system',
           });
         }
 
@@ -40,17 +40,26 @@ export class AuthController {
         });
       }
 
-      // Fallback / Demo session
+      // Local / Offline Node Auth Validation: Must be a signed-up operator
+      const validation = await EnergyStore.validateUserCredentials(email, password);
+      if (!validation.valid || !validation.user) {
+        return res.status(401).json({
+          status: 'error',
+          message: validation.reason || 'Account not found. You must sign up before logging in.',
+        });
+      }
+
       const profile = await EnergyStore.getProfile();
       return res.status(200).json({
         status: 'success',
-        message: 'Operator session established (Demo Node Mode)',
+        message: 'Operator session established',
         data: {
           token: 'demo-jwt-wattwise-telemetry-token',
           user: {
-            id: profile.id,
-            email: profile.email,
-            nodeId: profile.nodeId,
+            id: validation.user.id,
+            email: validation.user.email,
+            fullName: validation.user.fullName,
+            nodeId: validation.user.nodeId,
           },
           profile,
         },
@@ -71,6 +80,13 @@ export class AuthController {
         return res.status(400).json({
           status: 'error',
           message: 'Email and password are required',
+        });
+      }
+
+      if (password.length < 10) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Your password must contain at least 10 characters.',
         });
       }
 
@@ -99,15 +115,30 @@ export class AuthController {
         });
       }
 
-      return res.status(201).json({
-        status: 'success',
-        message: 'Operator registered (Demo Node Mode)',
-        data: {
+      // Register user in store
+      try {
+        const newUser = await EnergyStore.registerUser({
           email,
-          fullName: fullName || 'Operator',
-          nodeId: `NODE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        },
-      });
+          password,
+          fullName,
+        });
+
+        return res.status(201).json({
+          status: 'success',
+          message: 'Operator registered successfully',
+          data: {
+            id: newUser.id,
+            email: newUser.email,
+            fullName: newUser.fullName,
+            nodeId: newUser.nodeId,
+          },
+        });
+      } catch (regErr: any) {
+        return res.status(409).json({
+          status: 'error',
+          message: regErr.message || 'User already exists',
+        });
+      }
     } catch (err: any) {
       return res.status(500).json({
         status: 'error',

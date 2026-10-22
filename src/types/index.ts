@@ -16,6 +16,15 @@ export interface Profile {
   updatedAt: string;
 }
 
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  password: string;
+  fullName: string;
+  nodeId: string;
+  createdAt: string;
+}
+
 export interface Household {
   id: string;
   profileId: string;
