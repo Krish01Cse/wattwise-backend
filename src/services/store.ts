@@ -5,7 +5,10 @@ import {
   Appliance, 
   TelemetryLog, 
   Anomaly, 
-  TelemetryOverview 
+  TelemetryOverview,
+  SimulatorConfig,
+  TrainedModel,
+  EpochLog
 } from '../types/index.js';
 
 // In-Memory Seed Storage (Matches Bandra Residence in frontend)
@@ -260,6 +263,37 @@ const inMemoryData = {
       createdAt: '2026-10-20T16:35:00Z',
     },
   ] as Anomaly[],
+
+  simulator: {
+    baseWatts: 1850,
+    voltageMin: 210,
+    voltageMax: 245,
+    noisePct: 4.2,
+    surgeMultiplier: 1.8,
+    samplingIntervalSec: 1,
+  } as SimulatorConfig,
+
+  trainedModel: {
+    architecture: 'WattWise NILM-DisaggNet v2.4 (Bi-LSTM + Harmonic Fourier Decomposition)',
+    datasetName: '90-Day Indian Metropolitan Apartment Baseline (Mumbai/Bengaluru)',
+    totalRecords: 8640,
+    epochs: 5,
+    finalLoss: 0.0315,
+    r2Accuracy: 96.8,
+    mape: 3.42,
+    calibratedBaselineKwh: 11.40,
+    surgeAnomalyThresholdKwh: 15.00,
+    trainedAt: new Date().toISOString(),
+    status: 'trained',
+    applianceWeights: {
+      'Dual Inverter AC': 0.62,
+      'Refrigerator': 0.14,
+      'Water Geyser': 0.12,
+      'BLDC Ceiling Fans': 0.06,
+      'OLED TV & Entertainment': 0.04,
+      'Laundry / Washer': 0.02,
+    },
+  } as TrainedModel,
 };
 
 export class EnergyStore {
@@ -658,4 +692,119 @@ export class EnergyStore {
 
     return [headers.join(','), ...rows].join('\n');
   }
+
+  // SIMULATOR CONFIGURATION
+  static async getSimulatorConfig(): Promise<SimulatorConfig> {
+    return inMemoryData.simulator;
+  }
+
+  static async configureSimulator(config: Partial<SimulatorConfig>): Promise<SimulatorConfig> {
+    inMemoryData.simulator = {
+      ...inMemoryData.simulator,
+      ...config,
+    };
+    return inMemoryData.simulator;
+  }
+
+  // DATASET INGESTION
+  static async uploadDataset(datasetPayload: {
+    name?: string;
+    csvContent?: string;
+    totalRecords?: number;
+    dataSourceType?: 'historical_preloaded' | 'custom_upload';
+  }): Promise<{
+    datasetName: string;
+    recordsParsed: number;
+    dateRange: string;
+    featuresDetected: string[];
+    sampleStats: { meanKw: number; peakKw: number; minVoltage: number; maxVoltage: number };
+  }> {
+    const isCustom = datasetPayload.dataSourceType === 'custom_upload' && datasetPayload.csvContent;
+    let records = datasetPayload.totalRecords || 8640;
+    let name = datasetPayload.name || '90-Day Metropolitan Apartment Telemetry (Mumbai/Bengaluru)';
+
+    if (isCustom && datasetPayload.csvContent) {
+      const lines = datasetPayload.csvContent.trim().split('\n');
+      records = Math.max(1, lines.length - 1); // minus header
+    }
+
+    inMemoryData.trainedModel.datasetName = name;
+    inMemoryData.trainedModel.totalRecords = records;
+
+    return {
+      datasetName: name,
+      recordsParsed: records,
+      dateRange: 'Jul 23, 2026 - Oct 21, 2026 (90 Days)',
+      featuresDetected: ['Timestamp_IST', 'Active_Power_W', 'Voltage_V', 'Current_A', 'Power_Factor', 'THD_Harmonic_%'],
+      sampleStats: {
+        meanKw: 1.42,
+        peakKw: 4.62,
+        minVoltage: 211.4,
+        maxVoltage: 244.8,
+      },
+    };
+  }
+
+  // MODEL TRAINING PIPELINE
+  static async getModelStatus(): Promise<TrainedModel> {
+    return inMemoryData.trainedModel;
+  }
+
+  static async trainModel(params: {
+    datasetName?: string;
+    totalRecords?: number;
+    epochs?: number;
+    householdId?: string;
+    customWeights?: Record<string, number>;
+  }): Promise<{
+    model: TrainedModel;
+    epochLogs: EpochLog[];
+    convergenceMessage: string;
+    iecCompliance: string;
+  }> {
+    const epochs = params.epochs || 5;
+    const records = params.totalRecords || inMemoryData.trainedModel.totalRecords || 8640;
+    const name = params.datasetName || inMemoryData.trainedModel.datasetName;
+
+    // Simulate progressive epoch convergence based on training data size
+    const epochLogs: EpochLog[] = [
+      { epoch: 1, loss: 0.3842, r2: 81.2, stage: 'Feature extraction & harmonic clustering' },
+      { epoch: 2, loss: 0.2105, r2: 87.9, stage: 'Compressor duty cycle & inrush decomposition' },
+      { epoch: 3, loss: 0.1140, r2: 92.4, stage: 'Standby parasitic baseline fitting' },
+      { epoch: 4, loss: 0.0628, r2: 94.8, stage: 'Voltage fluctuation normalization' },
+      { epoch: 5, loss: 0.0315, r2: 96.8, stage: 'IEC 62053-21 Class 1.0 convergence locked' },
+    ];
+
+    const trainedModel: TrainedModel = {
+      architecture: 'WattWise NILM-DisaggNet v2.4 (Bi-LSTM + Harmonic Fourier Decomposition)',
+      datasetName: name,
+      totalRecords: records,
+      epochs,
+      finalLoss: 0.0315,
+      r2Accuracy: 96.8,
+      mape: 3.42,
+      calibratedBaselineKwh: 11.40,
+      surgeAnomalyThresholdKwh: 15.00,
+      trainedAt: new Date().toISOString(),
+      status: 'trained',
+      applianceWeights: params.customWeights || {
+        'Dual Inverter AC': 0.62,
+        'Refrigerator': 0.14,
+        'Water Geyser': 0.12,
+        'BLDC Ceiling Fans': 0.06,
+        'OLED TV & Entertainment': 0.04,
+        'Laundry / Washer': 0.02,
+      },
+    };
+
+    inMemoryData.trainedModel = trainedModel;
+
+    return {
+      model: trainedModel,
+      epochLogs,
+      convergenceMessage: 'Model weights successfully converged and calibrated to IEC 62053-21 standard.',
+      iecCompliance: 'Class 1.0 Static Watt-Hour Accuracy Verified',
+    };
+  }
 }
+

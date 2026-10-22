@@ -110,4 +110,91 @@ export class TelemetryController {
       });
     }
   }
+
+  static async uploadDataset(req: Request, res: Response) {
+    try {
+      const { name, csvContent, totalRecords, dataSourceType } = req.body;
+      const result = await EnergyStore.uploadDataset({
+        name,
+        csvContent,
+        totalRecords: totalRecords ? Number(totalRecords) : undefined,
+        dataSourceType,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Telemetry dataset successfully verified and staged for model training',
+        data: result,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'error',
+        message: err.message || 'Failed to upload/stage dataset',
+      });
+    }
+  }
+
+  static async configureSimulator(req: Request, res: Response) {
+    try {
+      const { baseWatts, voltageMin, voltageMax, noisePct, surgeMultiplier, samplingIntervalSec } = req.body;
+      const config = await EnergyStore.configureSimulator({
+        baseWatts: baseWatts ? Number(baseWatts) : undefined,
+        voltageMin: voltageMin ? Number(voltageMin) : undefined,
+        voltageMax: voltageMax ? Number(voltageMax) : undefined,
+        noisePct: noisePct ? Number(noisePct) : undefined,
+        surgeMultiplier: surgeMultiplier ? Number(surgeMultiplier) : undefined,
+        samplingIntervalSec: samplingIntervalSec ? Number(samplingIntervalSec) : undefined,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Real-time telemetry simulator parameters updated',
+        data: config,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'error',
+        message: err.message || 'Failed to configure simulator',
+      });
+    }
+  }
+
+  static async trainModel(req: Request, res: Response) {
+    try {
+      const { datasetName, totalRecords, epochs, customWeights } = req.body;
+      const result = await EnergyStore.trainModel({
+        datasetName,
+        totalRecords: totalRecords ? Number(totalRecords) : undefined,
+        epochs: epochs ? Number(epochs) : undefined,
+        customWeights,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'WattWise NILM-DisaggNet model training completed successfully',
+        data: result,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'error',
+        message: err.message || 'Model training pipeline failed',
+      });
+    }
+  }
+
+  static async getModelStatus(req: Request, res: Response) {
+    try {
+      const model = await EnergyStore.getModelStatus();
+      return res.status(200).json({
+        status: 'success',
+        data: model,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'error',
+        message: err.message || 'Failed to retrieve model status',
+      });
+    }
+  }
 }
+

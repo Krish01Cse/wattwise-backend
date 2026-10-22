@@ -104,3 +104,35 @@ export interface TelemetryOverview {
     syncLatencyMs: number;
   };
 }
+
+export interface SimulatorConfig {
+  baseWatts: number;
+  voltageMin: number;
+  voltageMax: number;
+  noisePct: number;
+  surgeMultiplier: number;
+  samplingIntervalSec: number;
+}
+
+export interface TrainedModel {
+  architecture: string;
+  datasetName: string;
+  totalRecords: number;
+  epochs: number;
+  finalLoss: number;
+  r2Accuracy: number;
+  mape: number;
+  calibratedBaselineKwh: number;
+  surgeAnomalyThresholdKwh: number;
+  trainedAt: string;
+  status: 'untrained' | 'training' | 'trained';
+  applianceWeights: Record<string, number>;
+}
+
+export interface EpochLog {
+  epoch: number;
+  loss: number;
+  r2: number;
+  stage: string;
+}
+
