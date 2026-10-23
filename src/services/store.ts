@@ -287,8 +287,8 @@ const inMemoryData = {
 
   trainedModel: {
     architecture: 'WattWise NILM-DisaggNet v2.4 (Bi-LSTM + Harmonic Fourier Decomposition)',
-    datasetName: '90-Day Indian Metropolitan Apartment Baseline (Mumbai/Bengaluru)',
-    totalRecords: 8640,
+    datasetName: '105-Day Indian Metropolitan Apartment Baseline (Mumbai/Bengaluru)',
+    totalRecords: 10080,
     epochs: 5,
     finalLoss: 0.0315,
     r2Accuracy: 96.8,
@@ -913,8 +913,8 @@ export class EnergyStore {
     sampleStats: { meanKw: number; peakKw: number; minVoltage: number; maxVoltage: number };
   }> {
     const isCustom = datasetPayload.dataSourceType === 'custom_upload' && datasetPayload.csvContent;
-    let records = datasetPayload.totalRecords || 8640;
-    let name = datasetPayload.name || '90-Day Metropolitan Apartment Telemetry (Mumbai/Bengaluru)';
+    let records = datasetPayload.totalRecords || 10080;
+    let name = datasetPayload.name || '105-Day Metropolitan Apartment Telemetry (Mumbai/Bengaluru)';
 
     if (isCustom && datasetPayload.csvContent) {
       const lines = datasetPayload.csvContent.trim().split('\n');
@@ -956,7 +956,7 @@ export class EnergyStore {
     iecCompliance: string;
   }> {
     const epochs = params.epochs || 5;
-    const records = params.totalRecords || inMemoryData.trainedModel.totalRecords || 8640;
+    const records = params.totalRecords || inMemoryData.trainedModel.totalRecords || 10080;
     const name = params.datasetName || inMemoryData.trainedModel.datasetName;
 
     // Simulate progressive epoch convergence based on training data size
