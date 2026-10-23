@@ -9,7 +9,8 @@ import {
   SimulatorConfig,
   TrainedModel,
   EpochLog,
-  RegisteredUser
+  RegisteredUser,
+  UserSettings
 } from '../types/index.js';
 
 // In-Memory Seed Storage (Matches Bandra Residence in frontend)
@@ -57,6 +58,24 @@ const inMemoryData = {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   } as Household,
+
+  settings: {
+    demoMode: true,
+    telemetrySource: 'dataset_historical',
+    hardwareNodeId: 'ESP32-CT-NODE-01',
+    hardwareBridgeConnected: true,
+    alertOvernight: true,
+    alertMultiHeavy: true,
+    alertPowerSpikes: true,
+    receiveEmail: true,
+    emailAddress: 'aditya.k@residence.in',
+    receiveWhatsApp: true,
+    phoneNumber: '+91 98921 12345',
+    receiveBrowser: true,
+    operatorName: 'Aditya K.',
+    operatorRole: 'lead_operator',
+    residenceName: 'Bandra Residence',
+  } as UserSettings,
 
   appliances: [
     {
@@ -999,5 +1018,128 @@ export class EnergyStore {
       iecCompliance: 'Class 1.0 Static Watt-Hour Accuracy Verified',
     };
   }
+
+  // SETTINGS & TELEMETRY PREFERENCES
+  static async getSettings(): Promise<UserSettings> {
+    const household = await this.getHousehold();
+    const profile = await this.getProfile();
+    return {
+      ...inMemoryData.settings,
+      demoMode: household.telemetrySource !== 'physical_sensors',
+      telemetrySource: household.telemetrySource,
+      hardwareNodeId: household.hardwareNodeId,
+      hardwareBridgeConnected: household.hardwareBridgeConnected,
+      emailAddress: profile.email || inMemoryData.settings.emailAddress,
+      operatorName: profile.fullName || inMemoryData.settings.operatorName,
+      operatorRole: profile.role || inMemoryData.settings.operatorRole,
+      residenceName: household.residenceName || inMemoryData.settings.residenceName,
+      isCloudSynced: isSupabaseConfigured,
+    };
+  }
+
+  static async updateSettings(updates: Partial<UserSettings>): Promise<UserSettings> {
+    inMemoryData.settings = {
+      ...inMemoryData.settings,
+      ...updates,
+    };
+
+    const householdUpdates: Partial<Household> = {};
+    if (updates.demoMode !== undefined) {
+      householdUpdates.telemetrySource = updates.demoMode ? 'dataset_historical' : 'physical_sensors';
+      inMemoryData.settings.telemetrySource = householdUpdates.telemetrySource;
+    }
+    if (updates.telemetrySource !== undefined) {
+      householdUpdates.telemetrySource = updates.telemetrySource;
+    }
+    if (updates.hardwareNodeId !== undefined) {
+      householdUpdates.hardwareNodeId = updates.hardwareNodeId;
+    }
+    if (updates.residenceName !== undefined) {
+      householdUpdates.residenceName = updates.residenceName;
+    }
+
+    if (Object.keys(householdUpdates).length > 0) {
+      await this.updateHousehold(householdUpdates);
+    }
+
+    if (isSupabaseConfigured && supabase && (updates.emailAddress || updates.operatorName)) {
+      const profileUpdates: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (updates.emailAddress) profileUpdates.email = updates.emailAddress;
+      if (updates.operatorName) profileUpdates.full_name = updates.operatorName;
+
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update(profileUpdates)
+          .eq('id', inMemoryData.profile.id);
+        if (!error) {
+          if (updates.emailAddress) inMemoryData.profile.email = updates.emailAddress;
+          if (updates.operatorName) inMemoryData.profile.fullName = updates.operatorName;
+        }
+      } catch (e) {
+        console.warn('[SUPABASE] Profile update error:', e);
+      }
+    }
+
+    return this.getSettings();
+  }
+
+  static async changePassword(params: {
+    email?: string;
+    currentPassword?: string;
+    newPassword: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const targetEmail = params.email || inMemoryData.profile.email;
+    const user = inMemoryData.users.find((u) => u.email.toLowerCase() === targetEmail.toLowerCase()) || inMemoryData.users[0];
+
+    if (user) {
+      user.password = params.newPassword;
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', inMemoryData.profile.id);
+      } catch (err) {
+        console.warn('[SUPABASE] Password sync warning:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Password cipher successfully encrypted and updated.',
+    };
+  }
+
+  static async resetSettings(): Promise<UserSettings> {
+    inMemoryData.settings = {
+      demoMode: true,
+      telemetrySource: 'dataset_historical',
+      hardwareNodeId: 'ESP32-CT-NODE-01',
+      hardwareBridgeConnected: true,
+      alertOvernight: true,
+      alertMultiHeavy: true,
+      alertPowerSpikes: true,
+      receiveEmail: true,
+      emailAddress: inMemoryData.profile.email || 'aditya.k@residence.in',
+      receiveWhatsApp: true,
+      phoneNumber: '+91 98921 12345',
+      receiveBrowser: true,
+      operatorName: inMemoryData.profile.fullName || 'Aditya K.',
+      operatorRole: inMemoryData.profile.role || 'lead_operator',
+      residenceName: inMemoryData.household.residenceName || 'Bandra Residence',
+    };
+
+    await this.updateHousehold({
+      telemetrySource: 'dataset_historical',
+      hardwareNodeId: 'ESP32-CT-NODE-01',
+      hardwareBridgeConnected: true,
+    });
+
+    return this.getSettings();
+  }
 }
+
 

@@ -145,3 +145,22 @@ export interface EpochLog {
   stage: string;
 }
 
+export interface UserSettings {
+  demoMode: boolean;
+  telemetrySource: TelemetrySource;
+  hardwareNodeId: string;
+  hardwareBridgeConnected: boolean;
+  alertOvernight: boolean;
+  alertMultiHeavy: boolean;
+  alertPowerSpikes: boolean;
+  receiveEmail: boolean;
+  emailAddress: string;
+  receiveWhatsApp: boolean;
+  phoneNumber: string;
+  receiveBrowser: boolean;
+  operatorName: string;
+  operatorRole: string;
+  residenceName: string;
+  isCloudSynced?: boolean;
+}
+
